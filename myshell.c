@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <sys/types.h>
-#include<stdlib.h>
+#include <stdlib.h>
 #include <fcntl.h>
 
 void printify(char *str){
@@ -157,13 +157,59 @@ int executed_input_redirection(char **arglist, int mark_loc){
     }
     arglist[mark_loc] = NULL;
 
-    pid= fork();
+    pid = fork();
     if(pid == -1){
         printf("fork error: %s\n", strerror(errno));
         return 0;
     }
     else if(pid == 0){
         if(dup2(file_des, STDIN_FILENO) == -1){
+            printf("dup error: %s\n", strerror(errno));
+            return 0;
+        }
+        execvp(arglist[0], arglist);
+        printf("execvp error: %s\n", strerror(errno));
+        return 0;
+    }
+    close(file_des);
+    return 1;
+}
+
+/*
+This function exectutes the output redirection method
+
+Params: 
+    arglist: parsed command to array
+    mark_loc: the index of the pipe mark
+Return:
+    1 if successful
+    0 else
+*/
+int executed_output_redirection(char **arglist, int mark_loc){
+    int file_des;
+    char* file_name;
+    pid_t pid;
+    off_t offset;
+    file_name = arglist[mark_loc+1];
+    file_des = open(file_name, O_WRONLY | O_CREAT, S_IRUSR);
+    if(file_des == -1){
+        printf("file error: %s\n", strerror(errno));
+        return 0;
+    }
+    offset = lseek(file_des, 0, SEEK_END);
+    if(offset == -1){
+        printf("offset error: %s\n", strerror(errno));
+        return 0;
+    }
+    arglist[mark_loc] = NULL;
+
+    pid = fork();
+    if(pid == -1){
+        printf("fork error: %s\n", strerror(errno));
+        return 0;
+    }
+    else if(pid == 0){
+        if(dup2(file_des, STDOUT_FILENO) == -1){
             printf("dup error: %s\n", strerror(errno));
             return 0;
         }
@@ -188,7 +234,7 @@ Returns:
 
 */
 int process_arglist(int count, char **arglist){
-    int i = 0, command_flag = 0, background_flag = 0, pipe_flag = 0, input_flag = 0, output_flag = 0, pipe_loc = 0, input_red_loc = 0;
+    int i = 0, command_flag = 0, background_flag = 0, pipe_flag = 0, input_flag = 0, output_flag = 0, pipe_loc = 0, input_red_loc = 0, output_red_loc = 0;
     printify("start");
     for(i=0; i < count; i++){
         if(strcmp(arglist[i],"&") == 0){
@@ -204,6 +250,7 @@ int process_arglist(int count, char **arglist){
         }
         else if (strcmp(arglist[i],">>") == 0){
             output_flag = 1;
+            output_red_loc = i;
         }
     }
     if(!(background_flag || pipe_flag || input_flag || output_flag)){
@@ -227,6 +274,10 @@ int process_arglist(int count, char **arglist){
     if(input_flag){
         printify("input redirection");
         return executed_input_redirection(arglist, input_red_loc);
+    }
+    if(output_flag){
+        printify("output redirection");
+        return executed_output_redirection(arglist, output_red_loc);
     }
     return 1;
 }
