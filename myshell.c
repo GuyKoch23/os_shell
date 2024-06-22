@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include<stdlib.h>
+#include <fcntl.h>
 
 void printify(char *str){
     printf("%s\n", str);
@@ -81,8 +82,9 @@ void background_execute_command(char **arglist){
 /*
 This function executed the pipe command
 
-Parans: 
+Params: 
     arglist: parsed command to array
+    pipe_loc: the index of the pipe mark
 Return:
     1 if successful
     0 else
@@ -134,6 +136,46 @@ int execute_pipe(char **arglist, int pipe_loc){
 }
 
 /*
+This function exectutes the input redirection method
+
+Params: 
+    arglist: parsed command to array
+    mark_loc: the index of the pipe mark
+Return:
+    1 if successful
+    0 else
+*/
+int executed_input_redirection(char **arglist, int mark_loc){
+    int file_des;
+    char* file_name;
+    pid_t pid;
+    file_name = arglist[mark_loc+1];
+    file_des = open(file_name, O_RDONLY | O_CREAT, S_IRUSR);
+    if(file_des == -1){
+        printf("file error: %s\n", strerror(errno));
+        return 0;
+    }
+    arglist[mark_loc] = NULL;
+
+    pid= fork();
+    if(pid == -1){
+        printf("fork error: %s\n", strerror(errno));
+        return 0;
+    }
+    else if(pid == 0){
+        if(dup2(file_des, STDIN_FILENO) == -1){
+            printf("dup error: %s\n", strerror(errno));
+            return 0;
+        }
+        execvp(arglist[0], arglist);
+        printf("execvp error: %s\n", strerror(errno));
+        return 0;
+    }
+    close(file_des);
+    return 1;
+}
+
+/*
 This function executes the command given by the arglist words-array
 
 Params: 
@@ -146,7 +188,7 @@ Returns:
 
 */
 int process_arglist(int count, char **arglist){
-    int i = 0, command_flag = 0, background_flag = 0, pipe_flag = 0, input_flag = 0, output_flag = 0, pipe_loc = 0;
+    int i = 0, command_flag = 0, background_flag = 0, pipe_flag = 0, input_flag = 0, output_flag = 0, pipe_loc = 0, input_red_loc = 0;
     printify("start");
     for(i=0; i < count; i++){
         if(strcmp(arglist[i],"&") == 0){
@@ -158,6 +200,7 @@ int process_arglist(int count, char **arglist){
         }
         else if (strcmp(arglist[i],"<") == 0){
             input_flag = 1;
+            input_red_loc = i;
         }
         else if (strcmp(arglist[i],">>") == 0){
             output_flag = 1;
@@ -180,6 +223,10 @@ int process_arglist(int count, char **arglist){
     if(pipe_flag){
         printify("pipe");
         return execute_pipe(arglist, pipe_loc);
+    }
+    if(input_flag){
+        printify("input redirection");
+        return executed_input_redirection(arglist, input_red_loc);
     }
     return 1;
 }
