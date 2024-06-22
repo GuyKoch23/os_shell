@@ -79,6 +79,61 @@ void background_execute_command(char **arglist){
 }
 
 /*
+This function executed the pipe command
+
+Parans: 
+    arglist: parsed command to array
+Return:
+    1 if successful
+    0 else
+*/
+int execute_pipe(char **arglist, int pipe_loc){
+    int pipe_arr[2];
+    pid_t pid_1, pid_2;
+    arglist[pipe_loc] = NULL; /* indicating the end of first one */
+    if(pipe(pipe_arr) == -1){
+        printf("pipe error: %s\n", strerror(errno));
+        return 0;
+    }
+    pid_1= fork();
+    if(pid_1 == -1){
+        printf("fork error: %s\n", strerror(errno));
+        return 0;
+    }
+    else if(pid_1 == 0){
+        close(pipe_arr[0]);
+        if(dup2(pipe_arr[1], STDOUT_FILENO) == -1){
+            printf("dup error: %s\n", strerror(errno));
+            return 0;
+        }
+        execvp(arglist[0], arglist);
+        printf("execvp error: %s\n", strerror(errno));
+        return 0;
+    }
+
+    pid_2 = fork();
+    if(pid_2 == -1){
+        printf("fork error: %s\n", strerror(errno));
+        return 0;
+    }
+    else if(pid_2 == 0){
+        close(pipe_arr[1]);
+        if(dup2(pipe_arr[0], STDIN_FILENO) == -1){
+            printf("dup error: %s\n", strerror(errno));
+            return 0;
+        }
+        execvp(arglist[pipe_loc+1], &arglist[pipe_loc+1]);
+        printf("execvp error: %s\n", strerror(errno));
+        return 0;
+    }
+    close(pipe_arr[0]);
+    close(pipe_arr[1]);
+    waitpid(pid_1, NULL, 0);
+    waitpid(pid_2, NULL, 0);
+    return 1;
+}
+
+/*
 This function executes the command given by the arglist words-array
 
 Params: 
@@ -91,7 +146,7 @@ Returns:
 
 */
 int process_arglist(int count, char **arglist){
-    int i = 0, command_flag = 0, background_flag = 0, pipe_flag = 0, input_flag = 0, output_flag = 0;
+    int i = 0, command_flag = 0, background_flag = 0, pipe_flag = 0, input_flag = 0, output_flag = 0, pipe_loc = 0;
     printify("start");
     for(i=0; i < count; i++){
         if(strcmp(arglist[i],"&") == 0){
@@ -99,6 +154,7 @@ int process_arglist(int count, char **arglist){
         }
         else if (strcmp(arglist[i],"|") == 0){
             pipe_flag = 1;
+            pipe_loc = i;
         }
         else if (strcmp(arglist[i],"<") == 0){
             input_flag = 1;
@@ -119,6 +175,11 @@ int process_arglist(int count, char **arglist){
         printify("back");
         arglist[count-1] = NULL;
         background_execute_command(arglist);
+        return 1;
+    }
+    if(pipe_flag){
+        printify("pipe");
+        return execute_pipe(arglist, pipe_loc);
     }
     return 1;
 }
