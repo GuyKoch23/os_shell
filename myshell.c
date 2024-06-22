@@ -3,6 +3,13 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <signal.h>
+#include <sys/types.h>
+#include<stdlib.h>
+
+void printify(char *str){
+    printf("%s\n", str);
+}
 
 /*
 This function prepares the shell for command execution
@@ -11,9 +18,9 @@ Returns:
     0 if should continue and execute, 1 otherwise
 */
 int prepare(void){
+    signal(SIGINT, SIG_IGN); // Disables ctrl^c
     return 0;
 }
-
 
 /*
 
@@ -37,7 +44,7 @@ int execute_command(char **arglist){
     }
     else if (pid > 0){
         int result;
-        waitpid(pid, &result, 0);
+        wait(&result);
         if(!WIFEXITED(result)){
             return 0;
         }
@@ -46,6 +53,28 @@ int execute_command(char **arglist){
     else{
         printf("fork error: %s\n", strerror(errno));
         return 0;
+    }
+}
+
+/*
+This function executes commands in the background
+
+Params:
+    arglist: parsed command to array
+*/
+void background_execute_command(char **arglist){
+    pid_t pid;
+    pid_t result;
+    pid = fork();
+    if(pid == 0){
+        execvp(arglist[0], arglist);
+		printf("execvp error: %s\n", strerror(errno));
+    }
+    else if (pid > 0){
+        result = waitpid(pid, &result, WNOHANG);
+    }
+    else{
+        printf("fork error: %s\n", strerror(errno));
     }
 }
 
@@ -62,8 +91,8 @@ Returns:
 
 */
 int process_arglist(int count, char **arglist){
-    
-    int i, command_flag, background_flag, pipe_flag, input_flag, output_flag = 0;
+    int i = 0, command_flag = 0, background_flag = 0, pipe_flag = 0, input_flag = 0, output_flag = 0;
+    printify("start");
     for(i=0; i < count; i++){
         if(strcmp(arglist[i],"&") == 0){
             background_flag = 1;
@@ -78,14 +107,19 @@ int process_arglist(int count, char **arglist){
             output_flag = 1;
         }
     }
-    if(!(background_flag && pipe_flag && input_flag && output_flag)){
+    if(!(background_flag || pipe_flag || input_flag || output_flag)){
         command_flag = 1;
     }
     
     if(command_flag){
+        printify("command");
         return execute_command(arglist);
     }
-    
+    if(background_flag){
+        printify("back");
+        arglist[count-1] = NULL;
+        background_execute_command(arglist);
+    }
     return 1;
 }
 
