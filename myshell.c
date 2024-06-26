@@ -63,20 +63,20 @@ This function executes commands in the background
 Params:
     arglist: parsed command to array
 */
-void background_execute_command(char **arglist){
+int background_execute_command(char **arglist){
     pid_t pid;
-    pid_t result;
     pid = fork();
     if(pid == 0){
+        signal(SIGCHLD, SIG_DFL);
         execvp(arglist[0], arglist);
 		printf("execvp error: %s\n", strerror(errno));
+        exit(1);
     }
-    else if (pid > 0){
-        result = waitpid(pid, &result, WNOHANG);
-    }
-    else{
+    else if (pid == -1){
         printf("fork error: %s\n", strerror(errno));
+        return 0;
     }
+    return 1;
 }
 
 /*
@@ -264,8 +264,7 @@ int process_arglist(int count, char **arglist){
     if(background_flag){
         printify("back");
         arglist[count-1] = NULL;
-        background_execute_command(arglist);
-        return 1;
+        return background_execute_command(arglist);
     }
     if(pipe_flag){
         printify("pipe");
